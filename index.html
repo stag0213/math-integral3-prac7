@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>y = sin x 上の正三角形が通過してできる立体</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; overflow: hidden; font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif; background: #f4f6fb; }
+  #panel {
+    position: absolute; top: 12px; left: 12px; width: 340px;
+    background: rgba(255,255,255,0.95); border-radius: 12px; padding: 14px 16px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.15); font-size: 14px; color: #222;
+    max-height: calc(100vh - 24px); overflow-y: auto;
+  }
+  h1 { font-size: 16px; margin: 0 0 8px; }
+  .desc { font-size: 12px; color: #555; line-height: 2; margin-bottom: 10px; }
+  .row { margin: 8px 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  input[type=range] { width: 100%; }
+  button { padding: 6px 12px; border: none; border-radius: 6px; background: #3b6fe0; color: #fff; cursor: pointer; font-size: 13px; }
+  button:hover { background: #2a56b8; }
+  button.sub { background: #e3e8f3; color: #333; }
+  button.sub:hover { background: #cdd5e8; }
+  .info { background: #f1f4fa; border-radius: 8px; padding: 8px 10px; }
+  .info .ln { margin: 6px 0; }
+  .final { color: #c0392b; }
+  label { cursor: pointer; user-select: none; }
+  #graphWrap { position: relative; width: 100%; height: 170px; margin-top: 6px; }
+  #graph { width: 100%; height: 100%; background: #fff; border: 1px solid #dde; border-radius: 8px; display: block; }
+  .glabel { position: absolute; color: #333; white-space: nowrap; pointer-events: none; }
+  .glabel .m { font-size: 12px; }
+  #glV { color: #c0392b; }
+  .legend span { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: middle; margin-right: 3px; }
+
+  /* ===== 自前の数式表示（外部ライブラリ不要） ===== */
+  .m { font-family: "Times New Roman", "Cambria Math", "STIX Two Math", serif; font-size: 15px; white-space: nowrap; }
+  .m i { font-style: italic; }
+  .m .rm { font-style: normal; }
+  /* 分数 */
+  .frac { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: center; margin: 0 2px; font-size: 0.92em; }
+  .frac > span { display: block; padding: 0 2px; line-height: 1.2; }
+  .frac > span + span { border-top: 1px solid currentColor; }
+  /* 根号：√ の部分は SVG、上の横線は border-top */
+  .sqrt { position: relative; display: inline-block; padding-left: 0.6em; margin-left: 1px; }
+  .sqrt svg { position: absolute; left: 0; top: 0; width: 0.6em; height: 100%; overflow: visible; }
+  .sqrt path { fill: none; stroke: currentColor; stroke-width: 1.1; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+  .sqrt .rad { display: inline-block; border-top: 1.1px solid currentColor; padding: 1px 2px 0 1px; line-height: 1.15; }
+  /* 積分 */
+  .int { font-size: 1.45em; vertical-align: -0.22em; margin-right: 1px; }
+  .lim { display: inline-flex; flex-direction: column; justify-content: space-between; vertical-align: middle;
+         font-size: 0.65em; line-height: 1.1; height: 2.6em; margin-right: 3px; }
+  sup.p { font-size: 0.7em; vertical-align: 0.5em; line-height: 0; }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="panel">
+  <h1>正三角形 PQR が通過してできる立体</h1>
+  <div class="desc" id="desc"></div>
+
+  <div class="row" style="justify-content:space-between">
+    <span>P の x 座標 <span class="m"><i>t</i></span></span><b id="tval">0.000</b>
+  </div>
+  <input type="range" id="slider" min="0" max="1.5707963" step="0.001" value="0">
+  <div class="row">
+    <button id="play">▶ 再生</button>
+    <button class="sub" id="reset">⟲ t=0</button>
+    <button class="sub" id="full">t=π/2</button>
+  </div>
+  <div class="row">
+    速さ <input type="range" id="speed" min="0.1" max="2" step="0.1" value="0.6" style="width:120px">
+    <label><input type="checkbox" id="loop"> ループ</label>
+  </div>
+  <div class="row">
+    <label><input type="checkbox" id="showSolid" checked> 立体</label>
+    <label><input type="checkbox" id="showTri" checked> 正三角形</label>
+    <label><input type="checkbox" id="showTrace" checked> 断面の軌跡</label>
+    <label><input type="checkbox" id="wire"> ワイヤー</label>
+  </div>
+  <div class="row">
+    不透明度 <input type="range" id="opacity" min="0.2" max="1" step="0.05" value="0.85" style="width:150px">
+  </div>
+  <div class="row">
+    視点:
+    <button class="sub" data-view="iso">斜め</button>
+    <button class="sub" data-view="front">x軸方向</button>
+    <button class="sub" data-view="top">真上</button>
+    <button class="sub" data-view="side">真横</button>
+  </div>
+  <div class="legend" style="font-size:12px;margin:6px 0">
+    <span style="background:#8c99bf"></span>底面(xy平面)
+    <span style="background:#4080f2"></span>QR側の面
+    <span style="background:#33cccc"></span>PR側の面
+  </div>
+
+  <div class="info" id="info"></div>
+
+  <div style="font-size:12px;margin-top:10px;color:#444;line-height:2" id="gtitle"></div>
+  <div id="graphWrap">
+    <canvas id="graph"></canvas>
+    <div class="glabel" id="gl0"></div>
+    <div class="glabel" id="glPi"></div>
+    <div class="glabel" id="glSq"></div>
+    <div class="glabel" id="glV"></div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const HALF = Math.PI / 2;
+const SQ3 = Math.sqrt(3);
+
+// ---------- 数式ビルダー ----------
+const sqrt = a => `<span class="sqrt"><svg viewBox="0 0 10 24" preserveAspectRatio="none">` +
+  `<path d="M0.5 14.5 L2.8 12.8 L6 23 L9.4 0.6 L10.5 0.6"/></svg><span class="rad">${a}</span></span>`;
+const frac = (a, b) => `<span class="frac"><span>${a}</span><span>${b}</span></span>`;
+const integ = (lo, hi) => `<span class="int">∫</span><span class="lim"><span>${hi}</span><span>${lo}</span></span>`;
+const m = s => `<span class="m">${s}</span>`;
+const sin = '<span class="rm">sin</span>';
+const sin2 = `<span class="rm">sin</span><sup class="p">2</sup>`;
+const R3_4 = frac(sqrt('3'), '4');      // √3/4
+const PI_2 = frac('π', '2');            // π/2
+
+// 説明文・グラフタイトル
+document.getElementById('desc').innerHTML =
+  `曲線 ${m(`C : <i>y</i> = ${sin} <i>x</i>`)} 上の点 ${m(`P(<i>t</i>, ${sin} <i>t</i>)`)} から
+   x 軸へ下ろした足を Q とし、PQ を1辺とする正三角形 PQR を xy 平面に垂直に立てます。
+   ${m('<i>t</i>')} を ${m(`0 → ${PI_2}`)} と動かしたときの通過領域を表示します。`;
+document.getElementById('gtitle').innerHTML =
+  `断面積 ${m(`<i>S</i>(<i>x</i>) = ${R3_4}${sin2} <i>x</i>`)} のグラフ<br>
+   （塗った部分の面積 ＝ 体積 ${m('<i>V</i>(<i>t</i>)')}）`;
+
+// ---------- 基本セットアップ（z軸を上にする） ----------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf4f6fb);
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.01, 100);
+camera.up.set(0, 0, 1);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+const d1 = new THREE.DirectionalLight(0xffffff, 0.9); d1.position.set(3, -3, 5); scene.add(d1);
+const d2 = new THREE.DirectionalLight(0xffffff, 0.4); d2.position.set(-2, 3, 2); scene.add(d2);
+
+const grid = new THREE.GridHelper(4, 16, 0xbbbbcc, 0xdde0ea);
+grid.rotation.x = Math.PI / 2;
+grid.position.set(1, 0, -0.001);
+scene.add(grid);
+
+// ---------- 3D ラベル ----------
+function makeLabel(text, color = '#222', size = 0.11) {
+  const c = document.createElement('canvas');
+  const ctx = c.getContext('2d');
+  const fs = 64;
+  ctx.font = `bold ${fs}px sans-serif`;
+  const w = Math.ceil(ctx.measureText(text).width) + 16;
+  c.width = w; c.height = fs + 16;
+  ctx.font = `bold ${fs}px sans-serif`;
+  ctx.fillStyle = color;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 8, c.height / 2);
+  const tx = new THREE.CanvasTexture(c);
+  tx.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tx, depthTest: false, transparent: true }));
+  s.scale.set(size * w / c.height, size, 1);
+  s.renderOrder = 999;
+  return s;
+}
+function addLabel(text, x, y, z, color, size) {
+  const l = makeLabel(text, color, size); l.position.set(x, y, z); scene.add(l); return l;
+}
+
+// ---------- 座標軸 ----------
+function arrow(dir, origin, len, color) {
+  scene.add(new THREE.ArrowHelper(new THREE.Vector3(...dir).normalize(), new THREE.Vector3(...origin), len, color, 0.08, 0.04));
+}
+arrow([1,0,0], [-0.3,0,0], 2.4, 0xd03030);
+arrow([0,1,0], [0,-0.4,0], 1.8, 0x30a030);
+arrow([0,0,1], [0,0,-0.2], 1.3, 0x3050d0);
+addLabel('x', 2.2, 0, 0.05, '#d03030', 0.14);
+addLabel('y', 0, 1.5, 0.05, '#30a030', 0.14);
+addLabel('z', 0, 0.05, 1.18, '#3050d0', 0.14);
+addLabel('O', -0.08, -0.08, 0, '#333', 0.1);
+addLabel('π/2', HALF, -0.12, 0, '#333', 0.1);
+addLabel('1', -0.08, 1, 0, '#333', 0.1);
+{
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([HALF,-0.03,0, HALF,0.03,0, -0.03,1,0, 0.03,1,0], 3));
+  scene.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x333333 })));
+}
+
+// ---------- 曲線 C ----------
+function lineFromFunc(f, a, b, n, color, dashed = false) {
+  const pts = [];
+  for (let i = 0; i <= n; i++) { const x = a + (b - a) * i / n; pts.push(...f(x)); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  const mat = dashed ? new THREE.LineDashedMaterial({ color, dashSize: 0.05, gapSize: 0.04 })
+                     : new THREE.LineBasicMaterial({ color });
+  const line = new THREE.Line(g, mat);
+  if (dashed) line.computeLineDistances();
+  scene.add(line);
+  return line;
+}
+lineFromFunc(x => [x, Math.sin(x), 0], -0.3, Math.PI, 300, 0x999999, true);
+lineFromFunc(x => [x, Math.sin(x), 0.002], 0, HALF, 200, 0xe02020);
+addLabel('C : y = sin x', 2.3, 0.85, 0.02, '#e02020', 0.1);
+
+const RIDGE_N = 400;
+const ridge = lineFromFunc(x => [x, Math.sin(x)/2, SQ3/2*Math.sin(x)], 0, HALF, RIDGE_N, 0x8e44ad);
+
+// ---------- 立体 ----------
+const solidMat = new THREE.MeshStandardMaterial({
+  vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity: 0.85, roughness: 0.55, metalness: 0.05
+});
+const solid = new THREE.Mesh(new THREE.BufferGeometry(), solidMat);
+scene.add(solid);
+
+const P = x => [x, Math.sin(x), 0];
+const Q = x => [x, 0, 0];
+const R = x => [x, Math.sin(x)/2, SQ3/2*Math.sin(x)];
+
+function buildSolid(t) {
+  if (t <= 1e-6) { solid.visible = false; return; }
+  const N = Math.max(2, Math.ceil(240 * t / HALF));
+  const pos = [], col = [];
+  const cB = [0.55,0.60,0.75], cQ = [0.25,0.50,0.95], cP = [0.20,0.80,0.80], cE = [1.0,0.60,0.20];
+  const tri = (a,b,c,k) => { pos.push(...a,...b,...c); col.push(...k,...k,...k); };
+  const quad = (a,b,c,d,k) => { tri(a,b,c,k); tri(a,c,d,k); };
+  for (let i = 0; i < N; i++) {
+    const x0 = t*i/N, x1 = t*(i+1)/N;
+    quad(Q(x0), Q(x1), P(x1), P(x0), cB);
+    quad(Q(x0), R(x0), R(x1), Q(x1), cQ);
+    quad(P(x0), P(x1), R(x1), R(x0), cP);
+  }
+  tri(Q(t), P(t), R(t), cE);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  solid.geometry.dispose();
+  solid.geometry = g;
+  solid.visible = ui.showSolid.checked;
+}
+
+// ---------- 断面の軌跡 ----------
+const traces = [];
+for (let k = 1; k <= 16; k++) {
+  const x = HALF * k / 16;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([...Q(x), ...P(x), ...R(x)], 3));
+  const l = new THREE.LineLoop(g, new THREE.LineBasicMaterial({ color: 0x555577, transparent: true, opacity: 0.6 }));
+  l.userData.x = x;
+  scene.add(l);
+  traces.push(l);
+}
+
+// ---------- 現在の正三角形 PQR ----------
+const triGeo = new THREE.BufferGeometry();
+triGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Array(9).fill(0), 3));
+const triMesh = new THREE.Mesh(triGeo, new THREE.MeshBasicMaterial({
+  color: 0xff8c1a, side: THREE.DoubleSide, transparent: true, opacity: 0.55, depthWrite: false
+}));
+const triEdge = new THREE.LineLoop(triGeo, new THREE.LineBasicMaterial({ color: 0xd35400 }));
+const triGroup = new THREE.Group();
+triGroup.add(triMesh, triEdge);
+scene.add(triGroup);
+
+const dotGeo = new THREE.SphereGeometry(0.025, 16, 16);
+const mkDot = c => { const d = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: c })); triGroup.add(d); return d; };
+const dP = mkDot(0xe02020), dQ = mkDot(0x222222), dR = mkDot(0x8e44ad);
+const lP = makeLabel('P', '#e02020'), lQ = makeLabel('Q', '#222'), lR = makeLabel('R', '#8e44ad');
+triGroup.add(lP, lQ, lR);
+
+function updateTriangle(t) {
+  const p = P(t), q = Q(t), r = R(t);
+  const a = triGeo.attributes.position;
+  a.setXYZ(0, ...q); a.setXYZ(1, ...p); a.setXYZ(2, ...r);
+  a.needsUpdate = true;
+  triGeo.computeBoundingSphere();
+  dP.position.set(...p); dQ.position.set(...q); dR.position.set(...r);
+  lP.position.set(p[0], p[1] + 0.08, p[2] + 0.04);
+  lQ.position.set(q[0], q[1] - 0.09, q[2] + 0.04);
+  lR.position.set(r[0], r[1], r[2] + 0.09);
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const ui = {
+  slider: $('slider'), tval: $('tval'), play: $('play'), speed: $('speed'), loop: $('loop'),
+  showSolid: $('showSolid'), showTri: $('showTri'), showTrace: $('showTrace'),
+  wire: $('wire'), opacity: $('opacity'), info: $('info')
+};
+
+let t = 0, playing = false;
+const S = x => SQ3/4 * Math.sin(x)**2;
+const V = x => SQ3/4 * (x/2 - Math.sin(2*x)/4);
+const V_FINAL = SQ3 * Math.PI / 16;
+
+function update() {
+  ui.slider.value = t;
+  ui.tval.textContent = t.toFixed(3) + (Math.abs(t - HALF) < 1e-3 ? ' (=π/2)' : '');
+  buildSolid(t);
+  updateTriangle(t);
+  triGroup.visible = ui.showTri.checked && t > 1e-6;
+  traces.forEach(l => l.visible = ui.showTrace.checked && l.userData.x <= t + 1e-9);
+  ridge.geometry.setDrawRange(0, Math.floor(t / HALF * RIDGE_N) + 1);
+
+  ui.info.innerHTML = [
+    m(`P = (${t.toFixed(3)}, ${Math.sin(t).toFixed(3)}, 0)`),
+    m(`PQ = ${sin} <i>t</i> = ${Math.sin(t).toFixed(4)}`),
+    m(`<i>S</i>(<i>t</i>) = ${R3_4}${sin2} <i>t</i> = ${S(t).toFixed(4)}`),
+    m(`<i>V</i>(<i>t</i>) = ${integ('0', '<i>t</i>')}<i>S</i>(<i>x</i>) <i>dx</i> = ${V(t).toFixed(4)}`),
+    `<span class="final">${m(`<i>V</i>(${PI_2}) = ${frac(sqrt('3'), '16')}π ≈ ${V_FINAL.toFixed(4)}`)}</span>`
+  ].map(s => `<div class="ln">${s}</div>`).join('');
+
+  drawGraph();
+}
+
+ui.slider.addEventListener('input', () => { t = parseFloat(ui.slider.value); update(); });
+ui.play.addEventListener('click', () => {
+  if (!playing && t >= HALF - 1e-6) t = 0;
+  playing = !playing;
+  ui.play.textContent = playing ? '⏸ 停止' : '▶ 再生';
+});
+$('reset').addEventListener('click', () => { t = 0; update(); });
+$('full').addEventListener('click', () => { t = HALF; update(); });
+['showSolid','showTri','showTrace'].forEach(k => ui[k].addEventListener('change', update));
+ui.wire.addEventListener('change', () => { solidMat.wireframe = ui.wire.checked; });
+ui.opacity.addEventListener('input', () => {
+  solidMat.opacity = parseFloat(ui.opacity.value);
+  solidMat.transparent = solidMat.opacity < 1;
+  solidMat.needsUpdate = true;
+});
+
+// 視点プリセット
+const target = new THREE.Vector3(0.8, 0.45, 0.3);
+const views = { iso: [3.0,-2.4,2.1], front: [4.2,0.45,0.35], top: [0.8,0.45,4.2], side: [0.8,-3.8,0.35] };
+function setView(name) { camera.position.set(...views[name]); controls.target.copy(target); controls.update(); }
+document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+setView('iso');
+
+// ---------- 断面積グラフ ----------
+const gc = $('graph');
+const gl0 = $('gl0'), glPi = $('glPi'), glSq = $('glSq'), glV = $('glV');
+gl0.innerHTML = m('0');
+glPi.innerHTML = m(PI_2);
+glSq.innerHTML = m(R3_4);
+
+function place(el, x, y, tx, ty) {
+  el.style.left = x + 'px'; el.style.top = y + 'px';
+  el.style.transform = `translate(${tx}%, ${ty}%)`;
+}
+
+function drawGraph() {
+  const dpr = devicePixelRatio;
+  const W = gc.clientWidth, H = gc.clientHeight;
+  gc.width = W * dpr; gc.height = H * dpr;
+  const ctx = gc.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const mg = { l: 44, r: 14, t: 28, b: 40 };
+  const sx = x => mg.l + (W - mg.l - mg.r) * x / HALF;
+  const sy = y => H - mg.b - (H - mg.t - mg.b) * y / 0.48;
+  const n = 200;
+
+  ctx.beginPath(); ctx.moveTo(sx(0), sy(0));
+  for (let i = 0; i <= n; i++) { const x = t * i / n; ctx.lineTo(sx(x), sy(S(x))); }
+  ctx.lineTo(sx(t), sy(0)); ctx.closePath();
+  ctx.fillStyle = 'rgba(255,140,26,0.35)'; ctx.fill();
+
+  ctx.strokeStyle = '#555'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(mg.l, sy(0)); ctx.lineTo(W - mg.r, sy(0));
+  ctx.moveTo(mg.l, sy(0)); ctx.lineTo(mg.l, 6);
+  ctx.stroke();
+
+  ctx.setLineDash([3,3]); ctx.strokeStyle = '#aaa';
+  ctx.beginPath(); ctx.moveTo(mg.l, sy(SQ3/4)); ctx.lineTo(sx(HALF), sy(SQ3/4)); ctx.lineTo(sx(HALF), sy(0)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.strokeStyle = '#d35400'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i <= n; i++) { const x = HALF * i / n; i ? ctx.lineTo(sx(x), sy(S(x))) : ctx.moveTo(sx(x), sy(S(x))); }
+  ctx.stroke();
+
+  ctx.fillStyle = '#c0392b';
+  ctx.beginPath(); ctx.arc(sx(t), sy(S(t)), 4, 0, Math.PI*2); ctx.fill();
+
+  place(gl0, mg.l, sy(0) + 2, -50, 0);
+  place(glPi, sx(HALF), sy(0) + 2, -50, 0);
+  place(glSq, mg.l - 3, sy(SQ3/4), -100, -50);
+  glV.innerHTML = m(`<i>V</i>(<i>t</i>) = ${V(t).toFixed(4)}`);
+  place(glV, W - mg.r, 4, -100, 0);
+}
+
+// ---------- ループ ----------
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  if (playing) {
+    t += dt * parseFloat(ui.speed.value);
+    if (t >= HALF) {
+      if (ui.loop.checked) t = 0;
+      else { t = HALF; playing = false; ui.play.textContent = '▶ 再生'; }
+    }
+    update();
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  drawGraph();
+});
+
+update();
+animate();
+</script>
+</body>
+</html>
